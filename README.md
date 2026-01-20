@@ -24,7 +24,7 @@ A simple, interactive, keyboard-driven Pomodoro timer for the terminal.
 If you have Go installed, you can install it directly:
 
 ```bash
-go install github.com/niracreate/pomo@latest
+go install github.com/nirabyte/pomo@latest
 ```
 
 ### Option 2: Build from Source
@@ -32,7 +32,7 @@ go install github.com/niracreate/pomo@latest
 Clone the repo and build the binary.
 
 ```bash
-git clone https://github.com/niracreate/pomo.git
+git clone https://github.com/nirabyte/pomo.git
 cd pomo
 go build -o pomo main.go
 ```
