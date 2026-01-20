@@ -1,4 +1,4 @@
-# Pomodoro CLI Timer
+# Pomodoro TUI Timer
 
 A simple, interactive, keyboard-driven Pomodoro timer for the terminal.
 
