@@ -156,6 +156,10 @@ bindsym $mod+Ctrl+p exec pomo 15m 3m 6
 | `Mouse wheel` | +/- 1 minute         |
 | `q`       | Quit                     |
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
 ### Built With
 
 - **[Go](https://go.dev/)**
