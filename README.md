@@ -37,6 +37,18 @@ cd pomo
 go build -o pomo main.go
 ```
 
+### Option 3: Cross-platform Builds
+
+Use the provided Makefile to build for all platforms:
+
+```bash
+make build-all    # Build for all platforms
+make build-linux  # Build Linux variants only
+make build-macos  # Build macOS variants only
+make build-windows # Build Windows variants only
+make clean        # Remove all built binaries
+```
+
 ## Usage
 
 ### 1. Interactive Mode
@@ -64,15 +76,75 @@ pomo 50m 10m
 pomo 45m 15m 6
 ```
 
+## Presets & Aliases
+
+Create shell aliases for common configurations:
+
+```bash
+# Standard 25-minute sessions
+alias pomo25='pomo 25m 5m 4'
+
+# Long 50-minute focus sessions
+alias pomo50='pomo 50m 10m 3'
+
+# Quick 15-minute sprints
+alias pomo15='pomo 15m 3m 6'
+
+# Custom ultra-focus mode
+alias pomofocus='pomo 90m 15m 2'
+```
+
+Or add to your shell config (`.bashrc`, `.zshrc`, etc.):
+
+```bash
+# Pomodoro presets
+pomo25() { pomo 25m 5m 4; }
+pomo50() { pomo 50m 10m 3; }
+pomo15() { pomo 15m 3m 6; }
+```
+
+Then source your config file:
+
+```bash
+# For Bash
+source ~/.bashrc
+
+# For Zsh
+source ~/.zshrc
+
+```
+
+## Key Bindings
+
+Bind keyboard shortcuts in your window manager:
+
+### Hyprland (`~/.config/hypr/hyprland.conf`)
+```bash
+# Pomodoro shortcuts
+bind = $mainMod, P, exec, pomo 25m 5m 4
+bind = $mainMod SHIFT, P, exec, pomo 50m 10m 3
+bind = $mainMod CTRL, P, exec, pomo 15m 3m 6
+```
+
+### i3/Sway (`~/.config/i3/config` or `~/.config/sway/config`)
+```bash
+# Pomodoro shortcuts
+bindsym $mod+p exec pomo 25m 5m 4
+bindsym $mod+Shift+p exec pomo 50m 10m 3
+bindsym $mod+Ctrl+p exec pomo 15m 3m 6
+```
+
 ## Controls
 
 ### Setup Screen
 
-| Key                 | Action        |
-| :------------------ | :------------ |
-| `TAB`/`Mouse wheel` | Switch inputs |
-| `ENTER`             | Start Timer   |
-| `q`                 | Quit          |
+| Key                 | Action                 |
+| :------------------ | :--------------------- |
+| `TAB`               | Switch inputs          |
+| `Mouse wheel`       | Change values (focused input) |
+| `ENTER`             | Start Timer            |
+| `a`                 | Toggle Autobreak       |
+| `q`                 | Quit                   |
 
 ### Timer Screen
 
@@ -81,6 +153,7 @@ pomo 45m 15m 6
 | `SPACE`   | Pause / Resume           |
 | `s`       | **Skip** current session |
 | `↑` / `↓` | +/- 1 minute             |
+| `Mouse wheel` | +/- 1 minute         |
 | `q`       | Quit                     |
 
 ### Built With

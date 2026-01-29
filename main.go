@@ -15,7 +15,6 @@ import (
 	"github.com/gen2brain/beeep"
 )
 
-// --- PIXEL BLOCK FONT ---
 var bigDigits = map[rune][]string{
 	'0': {
 		"██████",
@@ -96,23 +95,22 @@ var bigDigits = map[rune][]string{
 	},
 }
 
-// --- Styles ---
 var (
 	colorBlue   = lipgloss.Color("33")
 	colorYellow = lipgloss.Color("220")
-	colorSubtle = lipgloss.Color("241")
+	colorSubtle = lipgloss.Color("#999999")
 
 	styleContainer = lipgloss.NewStyle().Align(lipgloss.Center, lipgloss.Center)
 	styleInput     = lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).BorderForeground(colorSubtle).Padding(1, 3).Width(40)
 	styleHelp      = lipgloss.NewStyle().Foreground(colorSubtle).MarginTop(3)
 )
 
-// --- Model State ---
 type sessionState int
 
 const (
 	stateSetup sessionState = iota
 	stateRunning
+	statePopup
 )
 
 type timerType int
@@ -140,16 +138,19 @@ type model struct {
 	sessionsTotal  int
 	currentSession int
 
-	// <--- CHANGED: Added timerID to track unique timer loops
-	timerID int
+	timerID   int
+	autobreak bool
+
+	popupMessage string
+	popupCallback func(bool)
 }
 
-// --- Initialization ---
 
 func initialModel(workArg, breakArg, sessArg string) model {
 	m := model{
-		inputs:  make([]textinput.Model, 3),
-		timerID: 0, // <--- CHANGED: Initialize ID
+		inputs:    make([]textinput.Model, 3),
+		timerID:   0,
+		autobreak: true,
 	}
 
 	t0 := textinput.New()
@@ -181,7 +182,6 @@ func initialModel(workArg, breakArg, sessArg string) model {
 		m.sessionsTotal = s
 		m.timeLeft = m.workDuration
 
-		// <--- CHANGED: Increment ID when starting immediately
 		m.timerID++
 	} else {
 		m.state = stateSetup
@@ -192,21 +192,17 @@ func initialModel(workArg, breakArg, sessArg string) model {
 }
 
 func (m model) Init() tea.Cmd {
-	// <--- CHANGED: If quick start, ensure we start the tick loop with the ID
-	if m.state == stateRunning {
+		if m.state == stateRunning {
 		return tea.Batch(textinput.Blink, doTick(m.timerID))
 	}
 	return textinput.Blink
 }
 
-// --- Update Loop ---
 
-// <--- CHANGED: tickMsg is now a struct containing the ID
 type tickMsg struct {
 	id int
 }
 
-// <--- CHANGED: doTick now accepts an ID
 func doTick(id int) tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg{id: id}
@@ -219,9 +215,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// Model updated with new dimensions, View() will be called automatically
 		return m, nil
 
-	// <--- CHANGED: Check ID matches. If not, this is an old "ghost" tick.
 	case tickMsg:
 		if msg.id != m.timerID {
 			return m, nil
@@ -244,6 +240,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.state == stateSetup {
 			switch msg.String() {
+			case "a", "A":
+				m.autobreak = !m.autobreak
+				return m, nil
 			case "tab", "shift+tab", "enter", "up", "down":
 				s := msg.String()
 				if s == "enter" && m.focusIndex == len(m.inputs)-1 {
@@ -279,7 +278,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				m.paused = !m.paused
 				if !m.paused {
-					// <--- CHANGED: Pass current ID when unpausing
 					return m, doTick(m.timerID)
 				}
 			case "s":
@@ -290,6 +288,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.timeLeft > time.Minute {
 					m.timeLeft -= time.Minute
 				}
+			case "esc":
+				return m.resetToSetup()
+			}
+		}
+
+		if m.state == statePopup {
+			switch msg.String() {
+			case "y", "Y":
+				if strings.Contains(m.popupMessage, "Work session") {
+					// Start break
+					msg := fmt.Sprintf("Work session %d/%d finished! Time for a break.", m.currentSession, m.sessionsTotal)
+					_ = beeep.Notify("Pomodoro", msg, "")
+					m.timerType = typeBreak
+					m.timeLeft = m.breakDuration
+					m.paused = false
+					m.state = stateRunning
+					return m, doTick(m.timerID)
+				} else {
+					// Start work
+					msg := fmt.Sprintf("Break finished! Starting work session %d/%d.", m.currentSession+1, m.sessionsTotal)
+					_ = beeep.Notify("Pomodoro", msg, "")
+					m.timerType = typeWork
+					m.timeLeft = m.workDuration
+					m.currentSession++
+					m.paused = false
+					m.state = stateRunning
+
+					if m.currentSession > m.sessionsTotal {
+						_ = beeep.Notify("Pomodoro", fmt.Sprintf("All %d sessions completed! Great work!", m.sessionsTotal), "")
+						return m, tea.Quit
+					}
+					return m, doTick(m.timerID)
+				}
+			case "n", "N":
+				// Stay in current state, don't start next timer
+				m.state = stateRunning
+				return m, nil
+			case "q":
+				return m, tea.Quit
 			}
 		}
 	}
@@ -310,7 +347,6 @@ func (m *model) updateInputs(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// --- Helpers ---
 
 func parseDurationInput(s string, defaultMin int) time.Duration {
 	s = strings.TrimSpace(s)
@@ -337,7 +373,7 @@ func playWindowsSound() {
 }
 
 func (m model) startTimer() (model, tea.Cmd) {
-	m.workDuration = parseDurationInput(m.inputs[0].Value(), 30)
+	m.workDuration = parseDurationInput(m.inputs[0].Value(), 25)
 	m.breakDuration = parseDurationInput(m.inputs[1].Value(), 5)
 	s, _ := strconv.Atoi(m.inputs[2].Value())
 	if s == 0 {
@@ -345,31 +381,48 @@ func (m model) startTimer() (model, tea.Cmd) {
 	}
 	m.sessionsTotal = s
 	m.currentSession = 1
+
 	m.state = stateRunning
 	m.timerType = typeWork
 	m.timeLeft = m.workDuration
 	m.paused = false
 
-	// <--- CHANGED: New session, New ID
 	m.timerID++
 
 	return m, doTick(m.timerID)
 }
 
+func (m model) resetToSetup() (model, tea.Cmd) {
+	m.state = stateSetup
+	m.timerType = typeWork
+	m.paused = false
+	m.currentSession = 0
+	m.timeLeft = 0
+	m.timerID++
+	return m, nil
+}
+
 func (m model) handleTimerFinish() (model, tea.Cmd) {
 	playWindowsSound()
 
-	// <--- CHANGED: Increment ID. This invalidates any old ticks still in the pipeline.
+	if m.autobreak {
+		return m.handleTimerFinishAuto()
+	} else {
+		return m.handleTimerFinishManual()
+	}
+}
+
+func (m model) handleTimerFinishAuto() (model, tea.Cmd) {
 	m.timerID++
 
 	msg := ""
 	if m.timerType == typeWork {
-		msg = "Work session finished! Time for a break."
+		msg = fmt.Sprintf("Work session %d/%d finished! Time for a break.", m.currentSession, m.sessionsTotal)
 		_ = beeep.Notify("Pomodoro", msg, "")
 		m.timerType = typeBreak
 		m.timeLeft = m.breakDuration
 	} else {
-		msg = "Break finished! Back to work."
+		msg = fmt.Sprintf("Break finished! Starting work session %d/%d.", m.currentSession+1, m.sessionsTotal)
 		_ = beeep.Notify("Pomodoro", msg, "")
 		m.timerType = typeWork
 		m.timeLeft = m.workDuration
@@ -377,21 +430,83 @@ func (m model) handleTimerFinish() (model, tea.Cmd) {
 	}
 
 	if m.currentSession > m.sessionsTotal {
-		_ = beeep.Notify("Pomodoro", "All sessions completed!", "")
+		_ = beeep.Notify("Pomodoro", fmt.Sprintf("All %d sessions completed! Great work!", m.sessionsTotal), "")
 		return m, tea.Quit
 	}
 
-	// <--- CHANGED: Unpause automatically and start new tick loop with new ID
 	m.paused = false
 	return m, doTick(m.timerID)
 }
 
-// --- ASCII Renderer --- (No changes needed below)
+func (m model) handleTimerFinishManual() (model, tea.Cmd) {
+	m.state = statePopup
+	m.timerID++ // Increment ID to stop current timer
 
-func renderBigTime(d time.Duration, color lipgloss.Color) string {
-	minutes := int(d.Minutes())
-	seconds := int(d.Seconds()) % 60
-	timeStr := fmt.Sprintf("%02d:%02d", minutes, seconds)
+	if m.timerType == typeWork {
+		m.popupMessage = fmt.Sprintf("Work session %d/%d finished!\nStart the break?", m.currentSession, m.sessionsTotal)
+	} else {
+		m.popupMessage = fmt.Sprintf("Break finished!\nStart work session %d/%d?", m.currentSession+1, m.sessionsTotal)
+	}
+
+	return m, nil
+}
+
+
+func renderBigTime(d time.Duration, color lipgloss.Color, width int) string {
+	totalMinutes := int(d.Minutes())
+
+	var timeStr string
+	var requiredWidth int
+
+	if totalMinutes >= 60 {
+		totalSeconds := int(d.Seconds())
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		timeStr = fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+		requiredWidth = 56
+	} else {
+		seconds := int(d.Seconds()) % 60
+		timeStr = fmt.Sprintf("%02d:%02d", totalMinutes, seconds)
+		requiredWidth = 35
+	}
+
+	// For very small screens (30-20% of typical terminal width), always use simple text
+	if width < 40 {
+		totalSeconds := int(d.Seconds())
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+		var smallTimeStr string
+		if hours > 0 {
+			smallTimeStr = fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+		} else {
+			smallTimeStr = fmt.Sprintf("%02d:%02d", minutes, seconds)
+		}
+		return lipgloss.NewStyle().
+			Foreground(color).
+			Bold(true).
+			Render(smallTimeStr)
+	}
+
+	if width < requiredWidth {
+		var smallTimeStr string
+		if totalMinutes >= 60 {
+			totalSeconds := int(d.Seconds())
+			hours := totalSeconds / 3600
+			minutes := (totalSeconds % 3600) / 60
+			seconds := totalSeconds % 60
+			smallTimeStr = fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds)
+		} else {
+			seconds := int(d.Seconds()) % 60
+			smallTimeStr = fmt.Sprintf("%02d:%02d", totalMinutes, seconds)
+		}
+		return lipgloss.NewStyle().
+			Foreground(color).
+			Bold(true).
+			Render(smallTimeStr)
+	}
+
 	height := 5
 	lines := make([]string, height)
 	for _, char := range timeStr {
@@ -414,6 +529,8 @@ func (m model) View() string {
 	var s string
 	if m.state == stateSetup {
 		s = m.viewSetup()
+	} else if m.state == statePopup {
+		s = m.viewPopup()
 	} else {
 		s = m.viewTimer()
 	}
@@ -422,13 +539,68 @@ func (m model) View() string {
 
 func (m model) viewSetup() string {
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(colorBlue).Render("POMODORO SETUP") + "\n\n")
+
+	title := "POMODORO SETUP"
+	if m.width < 30 {
+		title = "SETUP"
+	}
+	if m.width < 20 {
+		title = "CFG"
+	}
+
+	var titleStyle lipgloss.Style
+	if m.width < 20 {
+		titleStyle = lipgloss.NewStyle().Foreground(colorBlue)
+	} else {
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
+	}
+	b.WriteString(titleStyle.Render(title) + "\n\n")
+
 	labels := []string{"Work Duration:", "Break Duration:", "Sessions:"}
-	for i := range m.inputs {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorSubtle).Render(labels[i]) + "\n")
+	if m.width < 40 {
+		labels = []string{"Work:", "Break:", "Sessions:"}
+	}
+	if m.width < 25 {
+		labels = []string{"W:", "B:", "S:"}
+	}
+
+	for i := 0; i < len(m.inputs); i++ {
+		labelStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+		if m.width < 20 {
+			labelStyle = lipgloss.NewStyle().Foreground(colorSubtle).Bold(false)
+		}
+		b.WriteString(labelStyle.Render(labels[i]) + "\n")
 		b.WriteString(styleInput.Render(m.inputs[i].View()) + "\n\n")
 	}
-	b.WriteString(styleHelp.Render("\n[TAB] Switch  •  [ENTER] Start  •  [q] Quit"))
+
+	autobreakStatus := "OFF"
+	if m.autobreak {
+		autobreakStatus = "ON"
+	}
+	autobreakLabel := fmt.Sprintf("Autobreak: %s", autobreakStatus)
+	if m.width < 30 {
+		autobreakLabel = fmt.Sprintf("Auto: %s", autobreakStatus)
+	}
+	if m.width < 20 {
+		autobreakLabel = fmt.Sprintf("A:%s", autobreakStatus)
+	}
+
+	labelStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+	if m.width < 20 {
+		labelStyle = lipgloss.NewStyle().Foreground(colorSubtle).Bold(false)
+	}
+	b.WriteString(labelStyle.Render(autobreakLabel) + "\n\n")
+
+	if m.width >= 80 {
+		helpText := "\n[TAB] Switch  •  [ENTER] Start  •  [a] Autobreak  •  [q] Quit"
+		if m.width < 50 {
+			helpText = "\n[TAB] Switch  •  [ENTER] Start\n[a] Autobreak  •  [q] Quit"
+		}
+		if m.width < 30 {
+			helpText = "\n[TAB] Sw  •  [ENTER] Go\n[a] Toggle  •  [q] Quit"
+		}
+		b.WriteString(styleHelp.Render(helpText))
+	}
 	return b.String()
 }
 
@@ -439,15 +611,108 @@ func (m model) viewTimer() string {
 		activeColor = colorYellow
 		modeStr = "BREAK TIME"
 	}
-	title := lipgloss.NewStyle().Bold(true).Foreground(activeColor).Render(modeStr)
-	asciiTimer := lipgloss.NewStyle().Margin(1, 0).Render(renderBigTime(m.timeLeft, activeColor))
+
+	// Make title responsive for narrow terminals
+	if m.width < 40 {
+		if m.timerType == typeWork {
+			modeStr = fmt.Sprintf("WORK %d/%d", m.currentSession, m.sessionsTotal)
+		} else {
+			modeStr = "BREAK"
+		}
+	}
+	if m.width < 25 {
+		if m.timerType == typeWork {
+			modeStr = fmt.Sprintf("W%d/%d", m.currentSession, m.sessionsTotal)
+		} else {
+			modeStr = "BRK"
+		}
+	}
+
+	// Make title smaller/styled for very narrow terminals
+	var titleStyle lipgloss.Style
+	if m.width < 25 {
+		titleStyle = lipgloss.NewStyle().Foreground(activeColor)
+	} else {
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(activeColor)
+	}
+	title := titleStyle.Render(modeStr)
+
+	asciiTimer := lipgloss.NewStyle().Margin(1, 0).Render(renderBigTime(m.timeLeft, activeColor, m.width))
+
 	status := "RUNNING"
 	if m.paused {
 		status = "PAUSED"
 	}
-	statusStr := lipgloss.NewStyle().Foreground(colorSubtle).Render(status)
-	help := styleHelp.Render("\n[SPACE] Pause  •  [s] Skip  •  [↑/↓] +/- 1m  •  [q] Quit")
+	// Make status smaller for very narrow terminals
+	var statusStyle lipgloss.Style
+	if m.width < 25 {
+		statusStyle = lipgloss.NewStyle().Foreground(colorSubtle)
+		status = strings.ToLower(status)
+	} else {
+		statusStyle = lipgloss.NewStyle().Foreground(colorSubtle)
+	}
+	statusStr := statusStyle.Render(status)
+
+	// Hide help text for screens less than 100% of typical terminal width
+	var help string
+	if m.width >= 80 {
+		helpText := "\n[SPACE] Pause  •  [s] Skip  •  [↑/↓] +/- 1m  •  [q] Quit"
+		if m.width < 60 {
+			helpText = "\n[SPACE] Pause  •  [s] Skip  •  [↑/↓] +/-1m\n[q] Quit"
+		}
+		help = styleHelp.Render(helpText)
+	}
+
 	return lipgloss.JoinVertical(lipgloss.Center, title, asciiTimer, statusStr, help)
+}
+
+func (m model) viewPopup() string {
+	var b strings.Builder
+
+	title := "CONFIRMATION"
+	if m.width < 30 {
+		title = "CONFIRM"
+	}
+	if m.width < 20 {
+		title = "OK?"
+	}
+
+	var titleStyle lipgloss.Style
+	if m.width < 20 {
+		titleStyle = lipgloss.NewStyle().Foreground(colorBlue)
+	} else {
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
+	}
+	b.WriteString(titleStyle.Render(title) + "\n\n")
+
+	// Make popup message responsive
+	message := m.popupMessage
+	if m.width < 40 && strings.Contains(message, "finished!") {
+		// Shorten message for narrow terminals
+		if strings.Contains(message, "Work session") {
+			message = "Start break?"
+		} else if strings.Contains(message, "Break finished") {
+			message = "Start work?"
+		}
+	}
+	if m.width < 25 {
+		// Even shorter for very narrow terminals
+		if strings.Contains(message, "break") {
+			message = "Break?"
+		} else if strings.Contains(message, "work") {
+			message = "Work?"
+		}
+	}
+	b.WriteString(message + "\n\n")
+
+	if m.width >= 80 {
+		helpText := "[y] Yes  •  [n] No  •  [q] Quit"
+		if m.width < 30 {
+			helpText = "[y] Yes  •  [n] No\n[q] Quit"
+		}
+		b.WriteString(styleHelp.Render(helpText))
+	}
+	return b.String()
 }
 
 func main() {
