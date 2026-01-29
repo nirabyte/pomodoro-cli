@@ -50,6 +50,8 @@ make clean        # Remove all built binaries
 make help         # Show available commands
 ```
 
+*Builds are optimized for size using `-ldflags="-s -w"` and `-trimpath` flags.*
+
 ## Usage
 
 ### 1. Interactive Mode

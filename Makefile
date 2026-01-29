@@ -1,4 +1,4 @@
-.PHONY: all clean help build-linux build-macos build-windows build-all install test fmt
+.PHONY: all clean help build-linux build-macos build-windows build-all
 
 all: help
 
@@ -13,11 +13,11 @@ build-linux: builds/pomo-linux-x64 builds/pomo-linux-x86 builds/pomo-linux-arm64
 
 builds/pomo-linux-x64:
 	@mkdir -p builds
-	GOOS=linux GOARCH=amd64 go build -o $@ main.go
+	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 builds/pomo-linux-x86:
 	@mkdir -p builds
-	GOOS=linux GOARCH=386 go build -o $@ main.go
+	GOOS=linux GOARCH=386 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 builds/pomo-linux-arm64:
 	@mkdir -p builds
@@ -27,21 +27,21 @@ build-macos: builds/pomo-macos-x64 builds/pomo-macos-arm64
 
 builds/pomo-macos-x64:
 	@mkdir -p builds
-	GOOS=darwin GOARCH=amd64 go build -o $@ main.go
+	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 builds/pomo-macos-arm64:
 	@mkdir -p builds
-	GOOS=darwin GOARCH=arm64 go build -o $@ main.go
+	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 build-windows: builds/pomo-windows-x64.exe builds/pomo-windows-x86.exe
 
 builds/pomo-windows-x64.exe:
 	@mkdir -p builds
-	GOOS=windows GOARCH=amd64 go build -o $@ main.go
+	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 builds/pomo-windows-x86.exe:
 	@mkdir -p builds
-	GOOS=windows GOARCH=386 go build -o $@ main.go
+	GOOS=windows GOARCH=386 go build -ldflags="-s -w" -trimpath -o $@ main.go
 
 clean:
 	rm -rf builds/
@@ -59,7 +59,6 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make build-all    # Build everything"
-	@echo "  make build-linux  # Build Linux only"
 	@echo "  make clean        # Clean builds"
 	@echo ""
 	@echo "Output binaries will be in the 'builds/' directory."
