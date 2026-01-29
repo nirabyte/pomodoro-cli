@@ -1,4 +1,4 @@
-.PHONY: all clean help build-linux build-macos build-windows build-all
+.PHONY: all clean help build-linux build-macos build-windows build-all install test fmt
 
 all: help
 

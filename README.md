@@ -47,6 +47,7 @@ make build-linux  # Build Linux variants only
 make build-macos  # Build macOS variants only
 make build-windows # Build Windows variants only
 make clean        # Remove all built binaries
+make help         # Show available commands
 ```
 
 ## Usage
