@@ -156,9 +156,7 @@ bindsym $mod+Ctrl+p exec pomo 15m 3m 6
 | `Mouse wheel` | +/- 1 minute         |
 | `q`       | Quit                     |
 
-## License
 
-[MIT License](LICENSE)
 
 ### Built With
 
@@ -166,3 +164,11 @@ bindsym $mod+Ctrl+p exec pomo 15m 3m 6
 - **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** — TUI Framework
 - **[Lip Gloss](https://github.com/charmbracelet/lipgloss)** — Styling
 - **[Beeep](https://github.com/gen2brain/beeep)** — Notifications
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+[MIT License](LICENSE)
