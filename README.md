@@ -158,7 +158,7 @@ bindsym $mod+Ctrl+p exec pomo 15m 3m 6
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+[MIT License](LICENSE)
 
 ### Built With
 
